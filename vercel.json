@@ -1,21 +1,15 @@
 {
   "version": 2,
-  "name": "be_w95",
   "builds": [
     {
-      "src": "src/server.js",
+      "src": "index.js",
       "use": "@vercel/node"
     }
   ],
-  "routes:": [
+  "routes": [
     {
       "src": "/(.*)",
-      "dest": "server.js"
+      "dest": "index.js"
     }
-  ],
-  "env": {
-    "NODE_ENV": "production"
-  },
-  "installCommand": "npm install",
-  "buildCommand": "npm run build"
+  ]
 }
