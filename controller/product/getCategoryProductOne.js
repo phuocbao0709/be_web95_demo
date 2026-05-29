@@ -1,39 +1,54 @@
-const productModel = require("../../models/productModel")
+const productModel = require("../../models/productModel");
 
+const getCategoryProduct = async (_req, res) => {
+  try {
+    const productByCategory = await productModel.aggregate([
+      {
+        $match: {
+          category: {
+            $type: "string",
+            $nin: ["", null],
+          },
+        },
+      },
+      {
+        $sort: {
+          createdAt: -1,
+        },
+      },
+      {
+        $group: {
+          _id: "$category",
+          product: {
+            $first: "$$ROOT",
+          },
+        },
+      },
+      {
+        $replaceRoot: {
+          newRoot: "$product",
+        },
+      },
+      {
+        $sort: {
+          category: 1,
+        },
+      },
+    ]);
 
-const getCategoryProduct = async(req,res)=>{
-    try{
-        const productCategory = await productModel.distinct("category")
+    return res.json({
+      message: "category product",
+      data: productByCategory,
+      success: true,
+      error: false,
+    });
+  } catch (err) {
+    return res.status(500).json({
+      message: err.message || "Failed to load category products",
+      error: true,
+      success: false,
+    });
+  }
+};
 
-        console.log("category",productCategory)
-
-        //array to store one product from each category
-        const productByCategory = []
-
-        for(const category of productCategory){
-            const product = await productModel.findOne({category })
-
-            if(product){
-                productByCategory.push(product)
-            }
-        }
-
-
-        res.json({
-            message : "category product",
-            data : productByCategory,
-            success : true,
-            error : false
-        })
-
-
-    }catch(err){
-        res.status(400).json({
-            message : err.message || err,
-            error : true,
-            success : false
-        })
-    }
-}
-
-module.exports = getCategoryProduct
+module.exports = getCategoryProduct;

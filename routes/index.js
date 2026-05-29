@@ -24,6 +24,7 @@ const deleteAddToCartProduct = require("../controller/user/deleteAddToCartProduc
 const searchProduct = require("../controller/product/searchProduct");
 const filterProductController = require("../controller/product/filterProduct");
 const createCheckoutSession = require("../controller/payment/createCheckoutSession");
+const confirmCheckoutSession = require("../controller/payment/confirmCheckoutSession");
 const getMyOrders = require("../controller/order/getMyOrders");
 const getOrderDetails = require("../controller/order/getOrderDetails");
 const getAllOrdersAdmin = require("../controller/order/getAllOrdersAdmin");
@@ -56,6 +57,7 @@ router.get("/view-card-product", authToken, addToCartViewProduct);
 router.post("/update-cart-product", authToken, updateAddToCartProduct);
 router.post("/delete-cart-product", authToken, deleteAddToCartProduct);
 router.post("/create-checkout-session", authToken, createCheckoutSession);
+router.get("/confirm-checkout-session", authToken, confirmCheckoutSession);
 router.get("/my-orders", authToken, getMyOrders);
 router.get("/order/:id", authToken, getOrderDetails);
 router.get("/admin/orders", authToken, getAllOrdersAdmin);

@@ -1,32 +1,65 @@
 const express = require("express");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
-require("dotenv").config();
+const path = require("path");
+require("dotenv").config({ path: path.join(__dirname, ".env") });
 const connectDB = require("./config/db");
 const router = require("./routes");
 const stripeWebhook = require("./controller/payment/stripeWebhook");
 
 const app = express();
+const stableFrontendOrigins = [
+  "https://fe-web95-demo-pxo8.vercel.app",
+];
 
 const configuredOrigins = [
   process.env.FRONTEND_URL,
   process.env.FRONTEND_PREVIEW_URL,
-  "http://localhost:5173",
-  "http://127.0.0.1:5173",
-].filter(Boolean);
+]
+  .flatMap((value) => String(value || "").split(","))
+  .map((value) => value.trim())
+  .filter(Boolean);
 
-const allowedOrigins = [...new Set(configuredOrigins)];
+const allowedOrigins = [...new Set([...stableFrontendOrigins, ...configuredOrigins])];
+
+const isAllowedOrigin = (origin) => {
+  if (!origin) {
+    return true;
+  }
+
+  if (allowedOrigins.includes(origin)) {
+    return true;
+  }
+
+  try {
+    const { protocol, hostname } = new URL(origin);
+    const isHttp = protocol === "http:" || protocol === "https:";
+
+    if (!isHttp) {
+      return false;
+    }
+
+    if (hostname === "localhost" || hostname === "127.0.0.1") {
+      return true;
+    }
+
+    if (/^fe-web95-demo(?:-[a-z0-9-]+)?\.vercel\.app$/i.test(hostname)) {
+      return true;
+    }
+  } catch (_error) {
+    return false;
+  }
+
+  return false;
+};
 
 const corsOptions = {
   origin(origin, callback) {
-    if (!origin) {
+    if (isAllowedOrigin(origin)) {
       return callback(null, true);
     }
 
-    if (allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    }
-
+    console.warn(`Blocked by CORS: ${origin}`);
     return callback(new Error(`Origin not allowed by CORS: ${origin}`));
   },
   credentials: true,

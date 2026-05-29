@@ -3,6 +3,9 @@ const addToCartModel = require("../../models/cartProduct");
 const checkoutSessionModel = require("../../models/checkoutSessionModel");
 
 let stripeClient = null;
+const DEFAULT_SHIPPING_COST = 75;
+const FREE_SHIPPING_THRESHOLD = 1500;
+const TAX_RATE = 0.075;
 
 const getStripeClient = () => {
   if (stripeClient) {
@@ -18,6 +21,14 @@ const getStripeClient = () => {
   stripeClient = new Stripe(secretKey);
 
   return stripeClient;
+};
+
+const normalizeUrl = (url) => {
+  if (!url || typeof url !== "string") {
+    return "";
+  }
+
+  return url.trim().replace(/\/+$/, "");
 };
 
 const buildAbsoluteImageUrl = (imageUrl, frontendUrl) => {
@@ -40,13 +51,96 @@ const buildAbsoluteImageUrl = (imageUrl, frontendUrl) => {
   }
 };
 
+const resolveFrontendUrl = (req) => {
+  const requestOrigin = normalizeUrl(req.get("origin"));
+
+  if (requestOrigin) {
+    return requestOrigin;
+  }
+
+  const configuredFrontendUrl = normalizeUrl(
+    process.env.FRONTEND_URL || process.env.FRONTEND_PREVIEW_URL,
+  );
+
+  if (configuredFrontendUrl) {
+    return configuredFrontendUrl;
+  }
+
+  const referer = req.get("referer");
+
+  if (!referer) {
+    return "";
+  }
+
+  try {
+    return normalizeUrl(new URL(referer).origin);
+  } catch (_error) {
+    return "";
+  }
+};
+
+const isValidCartItem = (item) => {
+  const quantity = Number(item?.quantity || 0);
+  const sellingPrice = Number(item?.productId?.sellingPrice || 0);
+
+  return (
+    item?.productId &&
+    Number.isInteger(quantity) &&
+    quantity > 0 &&
+    Number.isFinite(sellingPrice) &&
+    sellingPrice > 0
+  );
+};
+
+const mapOrderItem = (item) => {
+  const product = item.productId;
+  const quantity = Number(item.quantity || 0);
+  const unitPrice = Number(product.sellingPrice || 0);
+
+  return {
+    productId: String(product._id || product.id || product.productId || ""),
+    productName: product.productName || "TechPulse Product",
+    brandName: product.brandName || "",
+    category: product.category || "",
+    productImage:
+      Array.isArray(product.productImage) && product.productImage.length
+        ? product.productImage[0]
+        : "",
+    quantity,
+    unitPrice,
+    lineTotal: unitPrice * quantity,
+  };
+};
+
+const mapStripeLineItem = (item, frontendUrl) => {
+  const product = item.productId;
+  const unitPrice = Number(product.sellingPrice || 0);
+  const imageUrl =
+    Array.isArray(product.productImage) && product.productImage.length
+      ? buildAbsoluteImageUrl(product.productImage[0], frontendUrl)
+      : null;
+
+  return {
+    price_data: {
+      currency: "inr",
+      product_data: {
+        name: product.productName || "TechPulse Product",
+        description: product.description || undefined,
+        images: imageUrl ? [imageUrl] : undefined,
+      },
+      unit_amount: Math.round(unitPrice * 100),
+    },
+    quantity: Number(item.quantity || 0),
+  };
+};
+
 const createCheckoutSession = async (req, res) => {
   try {
-    const frontendUrl = process.env.FRONTEND_URL;
+    const frontendUrl = resolveFrontendUrl(req);
 
     if (!frontendUrl) {
       return res.status(500).json({
-        message: "FRONTEND_URL is not configured",
+        message: "Frontend URL is not configured",
         error: true,
         success: false,
       });
@@ -59,13 +153,7 @@ const createCheckoutSession = async (req, res) => {
       })
       .populate("productId");
 
-    const validCartItems = cartItems.filter(
-      (item) =>
-        item?.productId &&
-        item?.quantity > 0 &&
-        Number.isFinite(item?.productId?.sellingPrice) &&
-        item.productId.sellingPrice > 0,
-    );
+    const validCartItems = cartItems.filter(isValidCartItem);
 
     if (!validCartItems.length) {
       return res.status(400).json({
@@ -76,56 +164,23 @@ const createCheckoutSession = async (req, res) => {
     }
 
     const stripe = getStripeClient();
-    const orderItems = validCartItems.map((item) => {
-      const product = item.productId;
-      const unitPrice = Number(product.sellingPrice || 0);
-
-      return {
-        productId: String(product._id || product.id || product.productId || ""),
-        productName: product.productName || "TechPulse Product",
-        brandName: product.brandName || "",
-        category: product.category || "",
-        productImage:
-          Array.isArray(product.productImage) && product.productImage.length
-            ? product.productImage[0]
-            : "",
-        quantity: Number(item.quantity || 0),
-        unitPrice,
-        lineTotal: unitPrice * Number(item.quantity || 0),
-      };
-    });
+    const orderItems = validCartItems.map(mapOrderItem);
     const totalQty = orderItems.reduce((sum, item) => sum + item.quantity, 0);
     const subtotal = orderItems.reduce((sum, item) => sum + item.lineTotal, 0);
-    const shippingCost = subtotal > 1500 ? 0 : 75;
-    const taxAmount = Math.round(subtotal * 0.075);
+    const shippingCost =
+      subtotal > FREE_SHIPPING_THRESHOLD ? 0 : DEFAULT_SHIPPING_COST;
+    const taxAmount = Math.round(subtotal * TAX_RATE);
     const grandTotal = subtotal + shippingCost + taxAmount;
-    const lineItems = validCartItems.map((item) => {
-      const product = item.productId;
-      const imageUrl =
-        Array.isArray(product.productImage) && product.productImage.length
-          ? buildAbsoluteImageUrl(product.productImage[0], frontendUrl)
-          : null;
-
-      return {
-        price_data: {
-          currency: "inr",
-          product_data: {
-            name: product.productName || "TechPulse Product",
-            description: product.description || undefined,
-            images: imageUrl ? [imageUrl] : undefined,
-          },
-          unit_amount: Math.round(product.sellingPrice * 100),
-        },
-        quantity: item.quantity,
-      };
-    });
+    const lineItems = validCartItems.map((item) =>
+      mapStripeLineItem(item, frontendUrl),
+    );
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
       line_items: lineItems,
-      success_url: `${frontendUrl.replace(/\/$/, "")}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${frontendUrl.replace(/\/$/, "")}/checkout/cancel`,
+      success_url: `${frontendUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${frontendUrl}/checkout/cancel`,
       metadata: {
         userId: String(currentUser),
       },

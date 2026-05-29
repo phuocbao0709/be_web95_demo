@@ -1,7 +1,5 @@
 const Stripe = require("stripe");
-const addToCartModel = require("../../models/cartProduct");
-const checkoutSessionModel = require("../../models/checkoutSessionModel");
-const orderModel = require("../../models/orderModel");
+const completeCheckoutSession = require("./completeCheckoutSession");
 
 let stripeClient = null;
 
@@ -46,43 +44,10 @@ const stripeWebhook = async (req, res) => {
   try {
     if (event.type === "checkout.session.completed") {
       const session = event.data.object;
-      const existingOrder = await orderModel.findOne({
-        stripeSessionId: session.id,
-      });
-
-      if (!existingOrder) {
-        const draft = await checkoutSessionModel.findOne({
-          stripeSessionId: session.id,
-        });
-
-        if (!draft) {
-          return res.status(404).send("Checkout session draft not found");
-        }
-
-        await orderModel.create({
-          userId: draft.userId,
-          items: draft.items,
-          totalQty: draft.totalQty,
-          subtotal: draft.subtotal,
-          shippingCost: draft.shippingCost,
-          taxAmount: draft.taxAmount,
-          grandTotal: draft.grandTotal,
-          stripeSessionId: session.id,
-          stripePaymentIntentId: session.payment_intent || "",
-          paymentStatus: "paid",
-          orderStatus: "paid",
-        });
-
-        await checkoutSessionModel.findByIdAndUpdate(draft._id, {
-          status: "completed",
-        });
-
-        if (draft.userId) {
-          await addToCartModel.deleteMany({
-            userId: draft.userId,
-          });
-        }
-      }
+      await completeCheckoutSession(
+        session.id,
+        String(session.payment_intent || ""),
+      );
     }
 
     return res.json({ received: true });
