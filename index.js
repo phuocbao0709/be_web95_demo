@@ -4,20 +4,42 @@ const cookieParser = require("cookie-parser");
 require("dotenv").config();
 const connectDB = require("./config/db");
 const router = require("./routes");
+const stripeWebhook = require("./controller/payment/stripeWebhook");
 
 const app = express();
 
-const allowedOrigins = [
+const configuredOrigins = [
   process.env.FRONTEND_URL,
   process.env.FRONTEND_PREVIEW_URL,
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
 ].filter(Boolean);
 
-app.use(
-  cors({
-    origin: allowedOrigins.length ? allowedOrigins : true,
-    credentials: true,
-  }),
+const allowedOrigins = [...new Set(configuredOrigins)];
+
+const corsOptions = {
+  origin(origin, callback) {
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error(`Origin not allowed by CORS: ${origin}`));
+  },
+  credentials: true,
+  optionsSuccessStatus: 204,
+};
+
+app.post(
+  "/api/stripe/webhook",
+  express.raw({ type: "application/json" }),
+  stripeWebhook,
 );
+
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(cookieParser());
 

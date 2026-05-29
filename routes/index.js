@@ -23,6 +23,11 @@ const updateAddToCartProduct = require("../controller/user/updateAddToCartProduc
 const deleteAddToCartProduct = require("../controller/user/deleteAddToCartProduct");
 const searchProduct = require("../controller/product/searchProduct");
 const filterProductController = require("../controller/product/filterProduct");
+const createCheckoutSession = require("../controller/payment/createCheckoutSession");
+const getMyOrders = require("../controller/order/getMyOrders");
+const getOrderDetails = require("../controller/order/getOrderDetails");
+const getAllOrdersAdmin = require("../controller/order/getAllOrdersAdmin");
+const updateOrderStatus = require("../controller/order/updateOrderStatus");
 
 router.post("/signup", userSignUpController);
 router.post("/signin", userSignInController);
@@ -50,5 +55,10 @@ router.get("/countAddToCartProduct", authToken, countAddToCartProduct);
 router.get("/view-card-product", authToken, addToCartViewProduct);
 router.post("/update-cart-product", authToken, updateAddToCartProduct);
 router.post("/delete-cart-product", authToken, deleteAddToCartProduct);
+router.post("/create-checkout-session", authToken, createCheckoutSession);
+router.get("/my-orders", authToken, getMyOrders);
+router.get("/order/:id", authToken, getOrderDetails);
+router.get("/admin/orders", authToken, getAllOrdersAdmin);
+router.post("/admin/order-status", authToken, updateOrderStatus);
 
 module.exports = router;
